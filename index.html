@@ -24,17 +24,8 @@ button {
   font-size:14px;
 }
 
-.small-btn {
-  width:auto;
-  padding:6px 10px;
-}
-
-.action-btn {
-  width:auto;
-  padding:5px 8px;
-  font-size:12px;
-  margin-right:5px;
-}
+.small-btn { width:auto; padding:6px 10px; }
+.action-btn { width:auto; padding:5px 8px; font-size:12px; margin-right:5px; }
 
 .container {
   background:white;
@@ -70,23 +61,25 @@ button {
 <h1>Reservas do Sítio</h1>
 
 <div class="container">
+
 <label>Cliente</label>
 <input id="cliente">
 
-<label>Entrada</label>
+<label>Data de Entrada</label>
 <input type="date" id="entrada">
 
-<label>Saída</label>
+<label>Data de Saída</label>
 <input type="date" id="saida">
 
 <label>Valor Total</label>
 <input type="number" id="valorTotal">
 
-<label>Novo Pagamento (opcional)</label>
+<label>Novo Pagamento</label>
 <input type="number" id="novoPagamento">
 
 <button onclick="salvarReserva()">Salvar</button>
 <button id="cancelarBtn" onclick="cancelarEdicao()" style="display:none;">Cancelar edição</button>
+
 </div>
 
 <div class="container" id="resumo"></div>
@@ -100,24 +93,13 @@ button {
 <div id="lista"></div>
 
 <div class="container">
-<button onclick="exportar()">Backup JSON</button>
-<input type="file" onchange="importar(event)">
-</div>
-
-<!-- BACKUP AVANÇADO -->
-<div class="container">
-<label>Email para backup</label>
-<input type="email" id="emailBackup" placeholder="seuemail@gmail.com">
-
-<button onclick="exportarExcel()">📊 Baixar Backup Excel</button>
-<button onclick="enviarEmail()">📩 Abrir Email</button>
-
-<p id="alertaBackup" style="color:red; font-size:13px;"></p>
+<button onclick="exportarJSON()">📥 Fazer Backup</button>
+<input type="file" accept=".json" onchange="importarBackup(event)">
 </div>
 
 <script>
 
-let reservas = JSON.parse(localStorage.getItem("reservasV6")) || [];
+let reservas = JSON.parse(localStorage.getItem("reservasV8")) || [];
 
 let mesAtual = new Date().getMonth();
 let anoAtual = new Date().getFullYear();
@@ -130,7 +112,7 @@ const valorTotal = document.getElementById("valorTotal");
 const novoPagamento = document.getElementById("novoPagamento");
 
 function salvarLocal() {
-  localStorage.setItem("reservasV6", JSON.stringify(reservas));
+  localStorage.setItem("reservasV8", JSON.stringify(reservas));
 }
 
 function formatarData(d) {
@@ -143,10 +125,7 @@ function totalPago(pagamentos) {
 
 function addPagamento(r, valor) {
   if (!r.pagamentos) r.pagamentos = [];
-  r.pagamentos.push({
-    valor,
-    data: new Date().toISOString()
-  });
+  r.pagamentos.push({ valor, data: new Date().toISOString() });
 }
 
 function conflito(e,s,ignorar=null){
@@ -196,10 +175,7 @@ function salvarReserva(){
 }
 
 function editar(i){
-  if(editandoIndex!==null){
-    alert("Finalize a edição atual");
-    return;
-  }
+  if(editandoIndex!==null){ alert("Finalize edição"); return; }
 
   const r = reservas[i];
   cliente.value=r.cliente;
@@ -293,7 +269,7 @@ function render(){
 
       <button class="action-btn" onclick="editar(${i})">Editar</button>
       <button class="action-btn" onclick="remover(${i})">Excluir</button>
-      <button class="action-btn" onclick="pagar(${i})">Adicionar pagamento</button>
+      <button class="action-btn" onclick="pagar(${i})">Pagamento</button>
     `;
 
     lista.appendChild(div);
@@ -319,90 +295,39 @@ function proximoMes(){
   render();
 }
 
-function exportar(){
-  const data=JSON.stringify(reservas);
-  const blob=new Blob([data]);
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="backup.json";
+function exportarJSON(){
+  const data = JSON.stringify(reservas, null, 2);
+  const blob = new Blob([data], {type:"application/json"});
+  const a = document.createElement("a");
+
+  a.href = URL.createObjectURL(blob);
+  a.download = "backup_reservas.json";
   a.click();
 }
 
-function importar(e){
-  const file=e.target.files[0];
-  const reader=new FileReader();
-  reader.onload=x=>{
-    reservas=JSON.parse(x.target.result);
-    salvarLocal();
-    render();
+function importarBackup(event){
+  const file = event.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(e){
+    try{
+      const dados = JSON.parse(e.target.result);
+
+      if(confirm("Substituir dados atuais?")){
+        reservas = dados;
+        salvarLocal();
+        render();
+      }
+    }catch{
+      alert("Arquivo inválido");
+    }
   };
+
   reader.readAsText(file);
 }
 
-/* BACKUP EXCEL */
-let ultimoBackup = localStorage.getItem("ultimoBackup");
-
-function registrarBackup(){
-  const hoje = new Date().toISOString();
-  localStorage.setItem("ultimoBackup", hoje);
-}
-
-function verificarBackup(){
-  if(!ultimoBackup) return;
-  const dias = (new Date() - new Date(ultimoBackup)) / (1000*60*60*24);
-  if(dias > 7){
-    document.getElementById("alertaBackup").innerText =
-      "⚠️ Mais de 7 dias sem backup!";
-  }
-}
-
-function gerarExcel(){
-  let tabela = `<table border="1"><tr>
-  <th>Cliente</th><th>Entrada</th><th>Saída</th>
-  <th>Total</th><th>Pago</th><th>Pendente</th></tr>`;
-
-  reservas.forEach(r=>{
-    const pago = totalPago(r.pagamentos);
-    const pendente = r.valorTotal - pago;
-
-    tabela += `<tr>
-    <td>${r.cliente}</td>
-    <td>${formatarData(r.entrada)}</td>
-    <td>${formatarData(r.saida)}</td>
-    <td>${r.valorTotal}</td>
-    <td>${pago}</td>
-    <td>${pendente}</td>
-    </tr>`;
-  });
-
-  tabela += "</table>";
-  return tabela;
-}
-
-function exportarExcel(){
-
-  const html = gerarExcel();
-  const blob = new Blob([html], {type:"application/vnd.ms-excel"});
-
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-
-  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,"-");
-  a.download = `backup_${data}.xls`;
-  a.click();
-
-  registrarBackup();
-  verificarBackup();
-}
-
-function enviarEmail(){
-  const email = document.getElementById("emailBackup").value;
-  if(!email){ alert("Informe o email"); return; }
-
-  window.location.href = `mailto:${email}?subject=Backup Reservas`;
-}
-
-verificarBackup();
 render();
 
 </script>
